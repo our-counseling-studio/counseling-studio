@@ -1,5 +1,5 @@
 // 앱 파일만 캐시합니다. 상담 자료(IndexedDB, PC 폴더)는 건드리지 않고, 외부 요청은 차단합니다.
-const CACHE = 'consult-pwa-v2';
+const CACHE = 'consult-pwa-v3';
 const FILES = ['./', './index.html', './core.js', './store.js', './app.js', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => {

@@ -38,9 +38,9 @@
     const b = $('connBanner');
     b.classList.toggle('hidden', ok);
     b.classList.toggle('error', err);
-    if (state === 'NOT_CONNECTED') b.textContent = '⚠ 데이터 폴더를 연결하면 상담을 저장할 수 있습니다.';
+    if (state === 'NOT_CONNECTED') b.textContent = '상담 자료를 보관할 PC 폴더를 연결하면 안전하게 상담을 기록하고 저장할 수 있습니다.';
     else if (perm) b.textContent = '🔓 폴더 접근 권한이 필요합니다. "권한 승인"을 눌러주세요.';
-    else if (err) b.textContent = '⚠ 데이터 로드에 실패했습니다. 기존 파일은 보존되어 있습니다. 백업 파일이 있으면 "JSON 복원"으로 복구할 수 있습니다.';
+    else if (err) b.textContent = '⚠ 상담 자료를 불러오지 못했습니다. 기존 상담 파일은 안전하게 보존되어 있습니다. 보관 중인 백업 파일이 있으면 "자료 복원"으로 복구할 수 있습니다.';
     else if (!ok) b.textContent = '초기화 중...';
     $('dot').className = 'dot ' + (ok ? 'ok' : perm ? 'warn' : 'err');
     $('btnSetMonths').disabled = !ok || saving;
@@ -48,10 +48,16 @@
   }
 
   /* ===== 초기화/폴더 ===== */
+  const BASIS_LABELS = {
+    '정보주체 동의': '정보주체 동의 (보호자 직접 동의)',
+    '계약 체결을 위한 조치': '계약 체결 및 이행 (입학·등록 상담)',
+    '법령상 의무': '법령상 의무 준수 (법정 의무 보관)',
+    '미확인': '미확인 (수집 근거 확인 필요)'
+  };
   async function init() {
     $('fDate').value = C.localDate();
     fillSelect($('fStatus'), C.STATUSES); fillSelect($('eStatus'), C.STATUSES);
-    fillSelect($('fBasis'), C.BASES.slice(0, 3)); fillSelect($('eBasis'), C.BASES);
+    fillSelect($('fBasis'), C.BASES.slice(0, 3), BASIS_LABELS); fillSelect($('eBasis'), C.BASES, BASIS_LABELS);
     if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => { });
     if (!window.showDirectoryPicker) return setState('NOT_CONNECTED', '⚠ 이 브라우저는 폴더 연결을 지원하지 않습니다. Edge 또는 Chrome을 사용하세요.');
     let stored = null;
@@ -64,7 +70,9 @@
     if (perm === 'granted') await openAndLoad();
     else setState('PERMISSION_NEEDED', '이전 폴더 "' + dir.name + '"의 권한이 필요합니다. "권한 승인"을 눌러주세요.');
   }
-  function fillSelect(sel, arr) { sel.innerHTML = arr.map(v => '<option>' + esc(v) + '</option>').join(''); }
+  function fillSelect(sel, arr, labels) {
+    sel.innerHTML = arr.map(v => '<option value="' + esc(v) + '">' + esc((labels && labels[v]) || v) + '</option>').join('');
+  }
 
   async function pickFolder() {
     if (!window.showDirectoryPicker) return;
@@ -72,7 +80,7 @@
       const d = await window.showDirectoryPicker({ id: 'consult-pwa', startIn: 'desktop', mode: 'readwrite' });
       let hasData = false, others = 0;
       for await (const [n, h] of d.entries()) { if (n === 'counseling.json') hasData = true; else if (h.kind === 'file' && n.endsWith('.json')) others++; }
-      if (!hasData && others && !confirm('이 폴더에는 상담 자료가 아닌 JSON 파일이 있습니다. 상담 전용 폴더를 권장합니다. 그래도 사용할까요?')) return;
+      if (!hasData && others && !confirm('선택한 폴더에 상담 자료가 아닌 다른 파일이 포함되어 있습니다. 상담 자료 전용 폴더 사용을 권장합니다. 그래도 이 폴더를 사용할까요?')) return;
       dir = d; store = null;
       try { await idb('readwrite', s => s.put(d, IDB_KEY)); } catch (e) { console.warn('IDB 저장 실패:', e.message); }
       if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => { });
@@ -178,7 +186,7 @@
         d.sessions.push({ id: C.makeId('s'), counselorId: c.id, date, note, followUp: fu, followDone: false, doneAt: '', createdAt: now, updatedAt: now });
         return d;
       }, {}, '상담 저장 완료');
-      if (ok) { clearForm(); $('status').textContent = '💾 counseling.json 저장 완료'; }
+      if (ok) { clearForm(); $('status').textContent = '💾 상담 자료 저장 완료'; }
     } catch (e) { setMsg('❌ ' + e.message, 'err'); }
   }
   function clearForm() {
@@ -247,8 +255,8 @@
   }
   async function purgeBackups() {
     if (!store) return;
-    if (!confirm('backup 폴더의 모든 자동·복원전·변환전 백업과 counseling.json.bak을 삭제합니다.\n삭제된 상담 정보가 백업에서도 사라지며, 이후에는 되돌릴 수 없습니다. 직접 내려받은 백업 파일은 별도로 삭제해야 합니다. 계속할까요?')) return;
-    try { setMsg('✅ 백업 파일 ' + await store.purgeBackups() + '개 삭제', 'ok'); } catch (e) { setMsg('❌ 백업 삭제 실패: ' + e.message, 'err'); }
+    if (!confirm('보관 폴더 안의 모든 자동 백업 및 임시 보관 파일(.bak)을 완전히 삭제합니다.\n삭제 후에는 이전 백업으로 되돌릴 수 없습니다. (직접 내려받아 보관 중인 백업 파일은 별도로 삭제해야 합니다.) 계속할까요?')) return;
+    try { setMsg('✅ 백업 파일 ' + await store.purgeBackups() + '개 삭제 완료', 'ok'); } catch (e) { setMsg('❌ 백업 삭제 실패: ' + e.message, 'err'); }
   }
   const setStatus = (id, status) => doCommit(d => { const c = d.counselors.find(x => x.id === id); if (!c) throw new Error('상담자를 찾을 수 없습니다.'); c.status = status; c.updatedAt = new Date().toISOString(); return d; }, {}, '상태 변경 완료');
   const toggleDone = id => doCommit(d => { const s = d.sessions.find(x => x.id === id); if (!s) throw new Error('상담 기록을 찾을 수 없습니다.'); s.followDone = !s.followDone; s.doneAt = s.followDone ? C.localDate() : ''; s.updatedAt = new Date().toISOString(); return d; }, {}, '연락 상태 변경 완료');
@@ -272,7 +280,7 @@
     a.href = URL.createObjectURL(new Blob([JSON.stringify(D(), null, 2)], { type: 'application/json' }));
     a.download = 'consult-backup-' + C.stamp() + '.json'; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-    setMsg('✅ 백업 파일 다운로드 (개인정보가 포함되어 있으니 안전하게 보관하세요)', 'ok');
+    setMsg('✅ 자료 백업 파일 다운로드 완료 (개인정보가 포함되어 있으니 안전한 곳에 보관하세요)', 'ok');
   }
   function restore() {
     if (state !== 'CONNECTED' && state !== 'ERROR') return;
@@ -280,13 +288,13 @@
     inp.onchange = async () => {
       const f = inp.files[0]; if (!f) return;
       let r;
-      try { r = C.normalizeImport(JSON.parse(await f.text())); } catch (e) { return setMsg('복원 오류: JSON을 읽을 수 없습니다 — ' + e.message, 'err'); }
-      if (r.errors.length) return setMsg('❌ 복원 거부(현재 데이터는 변경되지 않음): ' + r.errors.slice(0, 3).join(', ') + (r.errors.length > 3 ? ' 외 ' + (r.errors.length - 3) + '건' : ''), 'err');
-      const info = '백업: 상담자 ' + r.data.counselors.length + '명 · 상담 ' + r.data.sessions.length + '건' + (r.source === 'legacy' ? ' (이전 형식 변환)' : '') +
-        '\n현재: 상담자 ' + D().counselors.length + '명 · 상담 ' + D().sessions.length + '건' + (r.warnings.length ? '\n\n' + r.warnings.join('\n') : '');
-      const merge = confirm(info + '\n\n[확인] 기존 데이터에 병합 (같은 ID는 최신 수정본 유지)\n[취소] 다른 방식 선택');
-      if (!merge && !confirm('현재 데이터 전체를 백업 내용으로 교체합니까?\n복원 직전 상태는 backup 폴더에 자동 저장됩니다.')) return;
-      if (await doCommit(d => merge ? C.mergeData(d, r.data) : r.data, { tag: 'pre-restore' }, '복원 완료 (' + (merge ? '병합' : '교체') + ')')) {
+      try { r = C.normalizeImport(JSON.parse(await f.text())); } catch (e) { return setMsg('복원 오류: 백업 파일을 읽을 수 없습니다 (파일 형식을 확인하세요) — ' + e.message, 'err'); }
+      if (r.errors.length) return setMsg('❌ 복원 불가 (현재 상담 자료는 안전하게 유지됩니다): ' + r.errors.slice(0, 3).join(', ') + (r.errors.length > 3 ? ' 외 ' + (r.errors.length - 3) + '건' : ''), 'err');
+      const info = '불러올 백업: 상담자 ' + r.data.counselors.length + '명 · 상담 ' + r.data.sessions.length + '건' + (r.source === 'legacy' ? ' (이전 수첩 자료)' : '') +
+        '\n현재 수첩: 상담자 ' + D().counselors.length + '명 · 상담 ' + D().sessions.length + '건' + (r.warnings.length ? '\n\n' + r.warnings.join('\n') : '');
+      const merge = confirm(info + '\n\n[확인] 기존 자료와 합치기 (동일 상담자는 최신 내용 유지)\n[취소] 기존 자료를 백업 내용으로 전체 바꾸기');
+      if (!merge && !confirm('현재 자료를 백업 파일 내용으로 완전히 바꿉니까?\n(바꾸기 직전의 상담 자료는 보관 폴더에 자동 백업되므로 안심하셔도 됩니다.)')) return;
+      if (await doCommit(d => merge ? C.mergeData(d, r.data) : r.data, { tag: 'pre-restore' }, '자료 복원 완료 (' + (merge ? '합치기' : '전체 바꾸기') + ')')) {
         if (state === 'ERROR') await openAndLoad(); else render();
       }
     };
@@ -310,7 +318,7 @@
     renderDashboard();
     const area = $('listArea');
     if (state === 'ERROR') {
-      area.innerHTML = '<div class="error-banner">⚠ 데이터를 불러오지 못했습니다.<br>기존 파일(counseling.json)은 <strong>그대로 보존</strong>되어 있습니다.<br><small>백업 JSON이 있으면 "JSON 복원"을 쓰거나, 폴더를 변경하세요.</small></div>';
+      area.innerHTML = '<div class="error-banner">⚠ 상담 자료를 불러오지 못했습니다.<br>기존 상담 파일은 <strong>안전하게 그대로 보존</strong>되어 있습니다.<br><small>보관 중인 백업 파일이 있으면 "자료 복원"을 사용하거나, 폴더를 다시 선택하세요.</small></div>';
       return;
     }
     if (document.activeElement !== $('setMonths')) $('setMonths').value = C.retentionMonths(D());
@@ -331,14 +339,14 @@
         btn('purgeExp', '', '만료 ' + exp.length + '명 일괄 삭제', 'danger') + btn('purgeBak', '', '백업 폴더 정리', 'ghost') + '</div>';
     }
     if (!list.length) { area.innerHTML = html + '<div class="empty">' + (view === 'expired' ? '보관 기한이 지난 상담자가 없습니다.' : '표시할 상담 기록이 없습니다.') + '</div>'; return; }
-    html += '<table><thead><tr><th>이름</th><th>전화번호</th><th>최근 상담</th><th>상태</th><th>다음 연락</th><th>보관기한</th><th>동의/근거</th><th></th></tr></thead><tbody>';
+    html += '<table><thead><tr><th>이름</th><th>전화번호</th><th>최근 상담</th><th>상태</th><th>다음 연락</th><th>보관기한</th><th>동의 및 수집근거</th><th></th></tr></thead><tbody>';
     for (const c of list) {
       const ss = d.sessions.filter(s => s.counselorId === c.id).sort((a, z) => (z.date + z.createdAt).localeCompare(a.date + a.createdAt));
       const next = ss.filter(s => s.followUp && !s.followDone).map(s => s.followUp).sort()[0];
       html += '<tr><td><strong>' + esc(c.name) + '</strong></td><td>' + phonesHtml(c) + '</td><td>' + esc(ss[0] ? ss[0].date : '-') + '</td>' +
         '<td><select data-act="status" data-id="' + esc(c.id) + '" style="width:auto;">' + C.STATUSES.map(s => '<option' + (s === c.status ? ' selected' : '') + '>' + esc(s) + '</option>').join('') + '</select></td>' +
         '<td>' + (next ? esc(next) + (next < today && !C.CLOSED.includes(c.status) ? ' <span class="tag late">지남</span>' : '') : '-') + '</td>' +
-        '<td>' + esc(c.retentionUntil || '-') + '</td><td>' + (c.consent.given ? '✅ ' : '— ') + '<span class="muted">' + esc(c.consent.basis) + '</span></td>' +
+        '<td>' + esc(c.retentionUntil || '-') + '</td><td>' + (c.consent.given ? '✅ 동의완료' : '— 미동의') + ' <span class="muted">' + esc(c.consent.basis) + '</span></td>' +
         '<td style="white-space:nowrap;">' + btn('hist', c.id, '이력 (' + ss.length + ')') + btn('addsess', c.id, '상담 추가') + btn('editc', c.id, '수정') + btn('delc', c.id, '삭제', 'danger') + '</td></tr>';
       if (expanded.has(c.id)) {
         html += '<tr class="hist"><td colspan="8"><table><thead><tr><th>상담일</th><th>내용</th><th>후속 연락</th><th></th></tr></thead><tbody>' +
